@@ -25,6 +25,9 @@ def get_all_cities():
             'lat': start_node['lat'],
             'lng': start_node['lng']
         }
+        # node['lat'] = float(start_node['lat'])
+        # node['lng'] = float(start_node['lng'])
+        # graph.push(node)
         cities.append(city)
     return cities
 
@@ -111,8 +114,8 @@ def add_route(start_cid, dis1, path1, dis2, path2, end_cid):
 
 
 def get_day(begin_time, end_time):
-    begin_time = datetime.datetime.strptime(begin_time, '%m-%d-%H')
-    end_time = datetime.datetime.strptime(end_time, '%m-%d-%H')
+    begin_time = datetime.datetime.strptime(begin_time, '%Y-%m-%dT%H:%M')
+    end_time = datetime.datetime.strptime(end_time, '%Y-%m-%dT%H:%M')
     return (end_time-begin_time).days
 
 
@@ -193,20 +196,26 @@ def get_n_city(route, n):
     rep.sort(key=get_index)
     return rep
 
+
+def get_lng(elem):
+    return float(elem.get('lng', 0))
+
 # 15 30 20 35
 
 
-def get_n_scenes(n, city, prefer_tag, prefer_hot=0, prefer_discount=0, prefer_score=0):
-    scenes = list(graph.find(label='scenery', property_key='cid', property_value=city['cid']))
+def get_n_scenes(n, direction, city, prefer_tag, prefer_hot=0, prefer_discount=0, prefer_score=0):
+    scenes = [rel.start_node() for rel in list(graph.match(rel_type='LOCATED_IN', end_node=city))]
     for index, scene in enumerate(scenes):
         is_prefer = 0
+        # print(prefer_tag)
         for tag in prefer_tag:
+            # print(tag)
             if tag in scene.get('tag', ''):
                 is_prefer = 1
                 break
-        prices = re.findall(r'\d+', scene.get('price', '0'))
+        prices = re.findall(r'\d+', scene.get('price', '100'))
         if len(prices) == 0:
-            price = 0
+            price = 100
         else:
             price = float(prices[0])
         try:
@@ -219,10 +228,15 @@ def get_n_scenes(n, city, prefer_tag, prefer_hot=0, prefer_discount=0, prefer_sc
             comment_num = int(scene.get('comment_num', '0'))
         except:
             comment_num = 0
+
         score = 10 + is_prefer * 5 + (15 + 15 * prefer_hot) * comment_num / 316.0 + (10 + 10 * prefer_discount) * (1 - price / 2998.0) + (20 + 15 * prefer_score) * rating / 5.0
         scenes[index]['score'] = score
+        scenes[index]['hot'] = min(comment_num / 316.0 * 100 * 3, 100)
+        scenes[index]['price'] = price
     scenes.sort(key=get_score, reverse=True)
-    return scenes[0: n]
+    scenes = scenes[0: n]
+    scenes.sort(key=get_lng, reverse=direction)
+    return scenes
 
 
 def get_route(begin_city, end_city, begin_time, end_time,
@@ -243,10 +257,11 @@ def get_route(begin_city, end_city, begin_time, end_time,
         '13': '海滨浴场',
         '14': '科技馆'
     }
-    prefer_tag = [tag_dict.get(tag, 'None') for tag in prefer_tag.split(';')]
+    prefer_tag = [tag_dict.get(tag, 'None') for tag in prefer_tag.split(':')]
     days = get_day(begin_time, end_time)
     begin_city = graph.find_one(label='city', property_key='name', property_value=begin_city)
     end_city = graph.find_one(label='city', property_key='name', property_value=end_city)
+    direction = begin_city['lng'] > end_city['lng']
     if not begin_city or not end_city:
         return 0
     rel = graph.match_one(start_node=begin_city, rel_type='GUIDE_TO', end_node=end_city)
@@ -259,28 +274,120 @@ def get_route(begin_city, end_city, begin_time, end_time,
     else:
         routes.append([begin_city] + get_n_city(route_1, days - 1))
         routes.append(get_n_city(route_1, days))
-    if days >= len(route_2) + 1:
-        route = [begin_city] + [graph.find_one(label='city', property_key='cid', property_value=cid) for cid in route_2]
-        routes.append(route)
-    else:
-        routes.append([begin_city] + get_n_city(route_2, days - 1))
-        routes.append(get_n_city(route_2, days))
+    if route_1 != route_2:
+        if days >= len(route_2) + 1:
+            route = [begin_city] + [graph.find_one(label='city', property_key='cid', property_value=cid) for cid in route_2]
+            routes.append(route)
+        else:
+            routes.append([begin_city] + get_n_city(route_2, days - 1))
+            routes.append(get_n_city(route_2, days))
     scene_routes = []
     memory_scenes = {}
     for route in routes:
+        all_price = 0
+        all_score = 0
         if len(route) == days:
             scenes = []
+            for index, city in enumerate(route):
+                if city['cid'] in memory_scenes:
+                    memory_ss = memory_scenes[city['cid']]
+                    ss = memory_ss['scenes']
+                    all_price += memory_ss['city_price']
+                    all_score += memory_ss['city_score']
+                else:
+                    ss = []
+                    city_score = 0
+                    city_price = 0
+                    for scene in get_n_scenes(2, direction, city, prefer_tag, prefer_hot, prefer_discount, prefer_score):
+                        ss.append({
+                            'sid': scene['sid'],
+                            'name': scene['name'],
+                            'img': scene['image'].split('<SPLIT>')[0],
+                            'day': index + 1,
+                            'tag': scene.get('tag', ''),
+                            'type': scene.get('type', ''),
+                            'location': {
+                                'lat': scene.get('lat', 0),
+                                'lng': scene.get('lng', 0)
+                            },
+                            'price': scene.get('price', ''),
+                            'shop_hours': scene.get('shop_hours', ''),
+                            'city': city['name'],
+                            'overall_rating': scene.get('rating', 0),
+                            'groupon_num': scene.get('groupon_num', 0),
+                            'hot': scene.get('hot', 0)
+                        })
+                        all_price += scene.get('price', 0)
+                        all_score += scene.get('score', 0)
+                        city_score += scene.get('score', 0)
+                        city_price += scene.get('price', 0)
+                    memory_scenes[city['cid']] = {
+                        'scenes': ss,
+                        'city_score': city_score,
+                        'city_price': city_price
+                    }
+                scenes += ss
+
+        else:
+            scenes = []
+            all_city_score = 0
             for city in route:
-                print()
-                break
+                all_city_score += all_city_score + city['score']
+            all_days = 0
+            day = 1
+            for index, city in enumerate(route):
+                city_day = int(city['score'] / all_city_score * days)
+                if index == len(route):
+                    city_day = days - all_days
+                all_days += city_day
+                if city_day == 0:
+                    continue
+                ss = []
+                for scene in get_n_scenes(2, direction, city, prefer_tag, prefer_hot, prefer_discount, prefer_score):
+                    ss.append(scene)
+                    all_price += scene.get('price', 0)
+                    all_score += scene.get('score', 0)
+                for i in range(city_day):
+                    ss = [{
+                        'sid': scene['sid'],
+                        'name': scene['name'],
+                        'img': scene['img'].split('<SPLIT>')[0],
+                        'day': day,
+                        'tag': scene.get('tag', ''),
+                        'type': scene.get('type', ''),
+                        'location': {
+                            'lat': scene.get('lat', 0),
+                            'lng': scene.get('lng', 0)
+                        },
+                        'price': scene.get('price', ''),
+                        'shop_hours': scene.get('shop_hours', ''),
+                        'city': city['name'],
+                        'overall_rating': scene.get('rating', 0),
+                        'groupon_num': scene.get('groupon_num', 0),
+                        'hot': scene.get('hot', 0)
+                    } for scene in ss[i * 2: i * 2 + 2]]
+                    scenes += ss
+                    day += 1
+        scene_routes.append({
+            'price': all_price,
+            'time': days,
+            'num': len(scenes),
+            'img': scenes[0]['img'],
+            'score': int(all_score),
+            'scenes': scenes
+        })
+    scene_routes.sort(key=get_score, reverse=True)
+    return {
+        'code': 200,
+        'routes': scene_routes
+    }
 
 
-print_max_property()
-# get_route(begin_city='北京',
+# print(get_route(begin_city='北京',
 #           end_city='洛阳',
 #           begin_time='5-4-0',
 #           end_time='5-7-0',
-#           prefer_tag='')
+#           prefer_tag=''))
 # get_all_cities()
 
 # make_route()
