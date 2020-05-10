@@ -351,7 +351,7 @@ def get_route(begin_city, end_city, begin_time, end_time,
                     ss = [{
                         'sid': scene['sid'],
                         'name': scene['name'],
-                        'img': scene['img'].split('<SPLIT>')[0],
+                        'img': scene['image'].split('<SPLIT>')[0],
                         'day': day,
                         'tag': scene.get('tag', ''),
                         'type': scene.get('type', ''),
