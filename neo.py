@@ -9,14 +9,15 @@ from keras.layers import Embedding, Dense, Flatten, LSTM
 from keras.utils.np_utils import to_categorical
 from keras.models import Sequential
 from keras import models
+import setting
 
 path = 'F:\大创\旅游路线\旅游问答\data'
 
 graph = Graph(
-    host='127.0.0.1',
-    http_port=7474,
-    user='neo4j',
-    password='neo4j'
+    host=setting.GRAPH_HOST,
+    http_port=setting.GRAPH_PORT,
+    user=setting.GRAPH_USER,
+    password=setting.GRAPH_PASSWORD
 )
 
 
@@ -295,6 +296,35 @@ def set_name():
     #     graph.push(node)
     #     num = num + 1
 
+
+def set_tid():
+    tag_dict = {
+        '1': '博物馆',
+        '2': '水族馆',
+        '3': '风景区',
+        '4': '动物园',
+        '5': '文物古迹',
+        '6': '公园',
+        '7': '景点',
+        '8': '休闲娱乐',
+        '9': '体育场馆',
+        '10': '游乐场',
+        '11': '度假村',
+        '12': '植物园',
+        '13': '海滨浴场',
+        '14': '科技馆'
+    }
+    scenes = list(graph.find('scenery'))
+    i = 0
+    for scene in scenes:
+        tag = scene.get('tag', '')
+        for t in tag_dict:
+            if tag_dict[t] in tag:
+                scene['tid'] = t
+                graph.push(scene)
+                break
+        i += 1
+        print(i, len(scenes))
 # make_dic('scenery', 2000, 'ns')
 # make_dic('province', 1000, 'np')
 # make_dic('city', 1500, 'nc')
@@ -322,3 +352,5 @@ def set_name():
 # make_data('test_data.txt', 200)
 # make_data('train_data.txt', 400)
 # make_model(val_num=50, model_name='first_dense_model.h5', epoch=10)
+
+# set_tid()

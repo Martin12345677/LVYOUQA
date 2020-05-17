@@ -74,6 +74,7 @@ class Route:
         prefer_hot = int(web.input().get('preferHot', 0))
         prefer_discount = int(web.input().get('preferDiscount', 0))
         prefer_score = int(web.input().get('preferScore', 0))
+        email = web.input().get('email', '')
 
         if not begin_city or not end_city or not begin_time or not end_time:
             return 0
@@ -86,7 +87,8 @@ class Route:
             prefer_tag=prefer_tag,
             prefer_hot=prefer_hot,
             prefer_discount=prefer_discount,
-            prefer_score=prefer_score
+            prefer_score=prefer_score,
+            email=email
         ))
 
     def OPTIONS(self):
